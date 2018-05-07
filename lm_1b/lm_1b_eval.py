@@ -63,7 +63,7 @@ tf.flags.DEFINE_string('sentence', '',
 tf.flags.DEFINE_string('input_data', '',
                        'Input data files for eval model.')
 tf.flags.DEFINE_integer('max_eval_steps', 1000000,
-                        'Maximum mumber of steps to run "eval" mode.')
+                        'Maximum number of steps to run "eval" mode.')
 
 
 # For saving demo resources, use batch size 1 and step 1.
@@ -72,7 +72,7 @@ NUM_TIMESTEPS = 1
 MAX_WORD_LEN = 50
 
 
-def _LoadModel(gd_file, ckpt_file):
+def _load_model(gd_file, ckpt_file):
   """Load the model from GraphDef and Checkpoint.
 
   Args:
@@ -85,8 +85,8 @@ def _LoadModel(gd_file, ckpt_file):
   with tf.Graph().as_default():
     sys.stderr.write('Recovering graph.\n')
     with tf.gfile.FastGFile(gd_file, 'r') as f:
-      s = f.read()  # .decode()
-      gd = tf.GraphDef()
+      s = f.read()  # .decode()   pylint: disable=invalid-name
+      gd = tf.GraphDef()        # pylint: disable=invalid-name
       text_format.Merge(s, gd)
 
     tf.logging.info('Recovering Graph %s', gd_file)
@@ -119,13 +119,13 @@ def _LoadModel(gd_file, ckpt_file):
   return sess, t
 
 
-def _EvalModel(dataset):
+def _eval_model(dataset):
   """Evaluate model perplexity using provided dataset.
 
   Args:
     dataset: LM1BDataset object.
   """
-  sess, t = _LoadModel(FLAGS.pbtxt, FLAGS.ckpt)
+  sess, t = _load_model(FLAGS.pbtxt, FLAGS.ckpt)
 
   current_step = t['global_step'].eval(session=sess)
   sys.stderr.write('Loaded step %d.\n' % current_step)
@@ -157,11 +157,11 @@ def _EvalModel(dataset):
       break
 
 
-def _SampleSoftmax(softmax):
+def _sample_softmax(softmax):
   return min(np.sum(np.cumsum(softmax) < np.random.rand()), len(softmax) - 1)
 
 
-def _SampleModel(prefix_words, vocab):
+def _sample_model(prefix_words, vocab):
   """Predict next words using the given prefix words.
 
   Args:
@@ -172,7 +172,7 @@ def _SampleModel(prefix_words, vocab):
   targets = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
   weights = np.ones([BATCH_SIZE, NUM_TIMESTEPS], np.float32)
 
-  sess, t = _LoadModel(FLAGS.pbtxt, FLAGS.ckpt)
+  sess, t = _load_model(FLAGS.pbtxt, FLAGS.ckpt)
 
   if prefix_words.find('<S>') != 0:
     prefix_words = '<S> ' + prefix_words
@@ -198,7 +198,7 @@ def _SampleModel(prefix_words, vocab):
                                     t['targets_in']: targets,
                                     t['target_weights_in']: weights})
 
-      sample = _SampleSoftmax(softmax[0])
+      sample = _sample_softmax(softmax[0])
       sample_char_ids = vocab.word_to_char_ids(vocab.id_to_word(sample))
 
       if not samples:
@@ -208,11 +208,11 @@ def _SampleModel(prefix_words, vocab):
       sys.stderr.write('%s\n' % sent)
 
       if (vocab.id_to_word(samples[0]) == '</S>' or
-          len(sent) > FLAGS.max_sample_words):
+          len(sent) > FLAGS.max_sample_words):        # pylint: disable=bad-continuation
         break
 
 
-def _DumpEmb(vocab):
+def _dump_emb(vocab):
   """Dump the softmax weights and word embeddings to files.
 
   Args:
@@ -223,7 +223,7 @@ def _DumpEmb(vocab):
   targets = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
   weights = np.ones([BATCH_SIZE, NUM_TIMESTEPS], np.float32)
 
-  sess, t = _LoadModel(FLAGS.pbtxt, FLAGS.ckpt)
+  sess, t = _load_model(FLAGS.pbtxt, FLAGS.ckpt)
 
   softmax_weights = sess.run(t['softmax_weights'])
   fname = FLAGS.save_dir + '/embeddings_softmax.npy'
@@ -249,7 +249,7 @@ def _DumpEmb(vocab):
   sys.stderr.write('Embedding file saved\n')
 
 
-def _DumpSentenceEmbedding(sentence, vocab):
+def _dump_sentence_embedding(sentence, vocab):
   """Predict next words using the given prefix words.
 
   Args:
@@ -260,7 +260,7 @@ def _DumpSentenceEmbedding(sentence, vocab):
   targets = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
   weights = np.ones([BATCH_SIZE, NUM_TIMESTEPS], np.float32)
 
-  sess, t = _LoadModel(FLAGS.pbtxt, FLAGS.ckpt)
+  sess, t = _load_model(FLAGS.pbtxt, FLAGS.ckpt)
 
   if sentence.find('<S>') != 0:
     sentence = '<S> ' + sentence
@@ -271,7 +271,7 @@ def _DumpSentenceEmbedding(sentence, vocab):
   inputs = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
   char_ids_inputs = np.zeros(
       [BATCH_SIZE, NUM_TIMESTEPS, vocab.max_word_length], np.int32)
-  for i in range(len(word_ids)):
+  for i, _ in enumerate(word_ids):
     inputs[0, 0] = word_ids[i]
     char_ids_inputs[0, 0, :] = char_ids[i]
 
@@ -294,13 +294,13 @@ def main(unused_argv):
 
   if FLAGS.mode == 'eval':
     dataset = data_utils.LM1BDataset(FLAGS.input_data, vocab)
-    _EvalModel(dataset)
+    _eval_model(dataset)
   elif FLAGS.mode == 'sample':
-    _SampleModel(FLAGS.prefix, vocab)
+    _sample_model(FLAGS.prefix, vocab)
   elif FLAGS.mode == 'dump_emb':
-    _DumpEmb(vocab)
+    _dump_emb(vocab)
   elif FLAGS.mode == 'dump_lstm_emb':
-    _DumpSentenceEmbedding(FLAGS.sentence, vocab)
+    _dump_sentence_embedding(FLAGS.sentence, vocab)
   else:
     raise Exception('Mode not supported.')
 

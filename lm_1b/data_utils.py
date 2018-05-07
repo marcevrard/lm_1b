@@ -147,7 +147,7 @@ class CharsVocabulary(Vocabulary):
     if len(word) > self.max_word_length - 2:
       word = word[:self.max_word_length-2]
     cur_word = self.bow_char + word + self.eow_char
-    for j in range(len(cur_word)):
+    for j, _ in enumerate(cur_word):
       code[j] = ord(cur_word[j])
     return code
 
