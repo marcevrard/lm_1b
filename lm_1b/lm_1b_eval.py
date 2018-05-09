@@ -16,7 +16,6 @@
 """Eval pre-trained 1 billion word language model.
 """
 import os
-import sys
 
 import numpy as np
 import tensorflow as tf
@@ -83,7 +82,7 @@ def _load_model(gd_file, ckpt_file):
     TensorFlow session and tensors dict.
   """
   with tf.Graph().as_default():
-    sys.stderr.write('Recovering graph.\n')
+    print('Recovering graph.\n')
     with tf.gfile.FastGFile(gd_file, 'r') as f:
       s = f.read()  # .decode()   pylint: disable=invalid-name
       gd = tf.GraphDef()        # pylint: disable=invalid-name
@@ -111,7 +110,7 @@ def _load_model(gd_file, ckpt_file):
                                      'Reshape_3:0',
                                      'global_step:0'], name='')
 
-    sys.stderr.write('Recovering checkpoint %s\n' % ckpt_file)
+    print('Recovering checkpoint %s\n' % ckpt_file)
     sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
     sess.run('save/restore_all', {'save/Const:0': ckpt_file})
     sess.run(t['states_init'])
@@ -128,7 +127,7 @@ def _eval_model(dataset):
   sess, t = _load_model(FLAGS.pbtxt, FLAGS.ckpt)
 
   current_step = t['global_step'].eval(session=sess)
-  sys.stderr.write('Loaded step %d.\n' % current_step)
+  print('Loaded step %d.\n' % current_step)
 
   data_gen = dataset.get_batch(BATCH_SIZE, NUM_TIMESTEPS, forever=False)
   sum_num = 0.0
@@ -143,15 +142,14 @@ def _eval_model(dataset):
     log_perp = sess.run(t['log_perplexity_out'], feed_dict=input_dict)
 
     if np.isnan(log_perp):
-      sys.stderr.error('log_perplexity is Nan.\n')
+      print('log_perplexity is Nan.\n')
     else:
       sum_num += log_perp * weights.mean()
       sum_den += weights.mean()
     if sum_den > 0:
       perplexity = np.exp(sum_num / sum_den)
 
-    sys.stderr.write('Eval Step: %d, Average Perplexity: %f.\n' %
-                     (i, perplexity))
+    print('Eval Step: %d, Average Perplexity: %f.\n' % (i, perplexity))
 
     if i > FLAGS.max_eval_steps:
       break
@@ -181,31 +179,31 @@ def _sample_model(prefix_words, vocab):
   prefix_char_ids = [vocab.word_to_char_ids(w) for w in prefix_words.split()]
   for _ in range(FLAGS.num_samples):
     inputs = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
-    char_ids_inputs = np.zeros(
+    inputs_char_ids = np.zeros(
         [BATCH_SIZE, NUM_TIMESTEPS, vocab.max_word_length], np.int32)
     samples = prefix[:]
     char_ids_samples = prefix_char_ids[:]
     sent = ''
     while True:
       inputs[0, 0] = samples[0]
-      char_ids_inputs[0, 0, :] = char_ids_samples[0]
-      samples = samples[1:]
-      char_ids_samples = char_ids_samples[1:]
+      inputs_char_ids[0, 0, :] = char_ids_samples[0]
+      samples.pop(0)
+      char_ids_samples.pop(0)
 
       softmax = sess.run(t['softmax_out'],
-                         feed_dict={t['char_inputs_in']: char_ids_inputs,
+                         feed_dict={t['char_inputs_in']: inputs_char_ids,
                                     t['inputs_in']: inputs,
                                     t['targets_in']: targets,
                                     t['target_weights_in']: weights})
 
-      sample = _sample_softmax(softmax[0])
-      sample_char_ids = vocab.word_to_char_ids(vocab.id_to_word(sample))
+      smpl = _sample_softmax(softmax[0])
+      sample_char_ids = vocab.word_to_char_ids(vocab.id_to_word(smpl))
 
       if not samples:
-        samples = [sample]
+        samples = [smpl]
         char_ids_samples = [sample_char_ids]
       sent += vocab.id_to_word(samples[0]) + ' '
-      sys.stderr.write('%s\n' % sent)
+      print('%s\n' % sent)
 
       if (vocab.id_to_word(samples[0]) == '</S>' or
           len(sent) > FLAGS.max_sample_words):        # pylint: disable=bad-continuation
@@ -213,7 +211,7 @@ def _sample_model(prefix_words, vocab):
 
 
 def _predict_missing(prefix_words, vocab):
-  """Predict next words using the given prefix words.
+  """Predict missing word using the given prefix and affix words.
 
   Args:
     prefix_words: Prefix words.
@@ -232,31 +230,31 @@ def _predict_missing(prefix_words, vocab):
   prefix_char_ids = [vocab.word_to_char_ids(w) for w in prefix_words.split()]
   for _ in range(FLAGS.num_samples):
     inputs = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
-    char_ids_inputs = np.zeros(
+    inputs_char_ids = np.zeros(
         [BATCH_SIZE, NUM_TIMESTEPS, vocab.max_word_length], np.int32)
     samples = prefix[:]
     char_ids_samples = prefix_char_ids[:]
     sent = ''
     while True:
       inputs[0, 0] = samples[0]
-      char_ids_inputs[0, 0, :] = char_ids_samples[0]
-      samples = samples[1:]
-      char_ids_samples = char_ids_samples[1:]
+      inputs_char_ids[0, 0, :] = char_ids_samples[0]
+      samples.pop(0)
+      char_ids_samples.pop(0)
 
       softmax = sess.run(t['softmax_out'],
-                         feed_dict={t['char_inputs_in']: char_ids_inputs,
+                         feed_dict={t['char_inputs_in']: inputs_char_ids,
                                     t['inputs_in']: inputs,
                                     t['targets_in']: targets,
                                     t['target_weights_in']: weights})
 
-      sample = _sample_softmax(softmax[0])
-      sample_char_ids = vocab.word_to_char_ids(vocab.id_to_word(sample))
+      smpl = _sample_softmax(softmax[0])
+      sample_char_ids = vocab.word_to_char_ids(vocab.id_to_word(smpl))
 
       if not samples:
-        samples = [sample]
+        samples = [smpl]
         char_ids_samples = [sample_char_ids]
       sent += vocab.id_to_word(samples[0]) + ' '
-      sys.stderr.write('%s\n' % sent)
+      print(sent)
 
       if (vocab.id_to_word(samples[0]) == '</S>' or
           len(sent) > FLAGS.max_sample_words):        # pylint: disable=bad-continuation
@@ -280,7 +278,7 @@ def _dump_emb(vocab):
   fname = FLAGS.save_dir + '/embeddings_softmax.npy'
   with tf.gfile.Open(fname, mode='w') as f:
     np.save(f, softmax_weights)
-  sys.stderr.write('Finished softmax weights\n')
+  print('Finished softmax weights\n')
 
   all_embs = np.zeros([vocab.size, 1024])
   for i in range(vocab.size):
@@ -292,12 +290,12 @@ def _dump_emb(vocab):
           vocab.word_char_ids[i].reshape([-1, 1, MAX_WORD_LEN]))
     embs = sess.run(t['all_embs'], input_dict)
     all_embs[i, :] = embs
-    sys.stderr.write('Finished word embedding %d/%d\n' % (i, vocab.size))
+    print('Finished word embedding %d/%d\n' % (i, vocab.size))
 
   fname = FLAGS.save_dir + '/embeddings_char_cnn.npy'
   with tf.gfile.Open(fname, mode='w') as f:
     np.save(f, all_embs)
-  sys.stderr.write('Embedding file saved\n')
+  print('Embedding file saved\n')
 
 
 def _dump_sentence_embedding(sentence, vocab):
@@ -320,16 +318,16 @@ def _dump_sentence_embedding(sentence, vocab):
   char_ids = [vocab.word_to_char_ids(w) for w in sentence.split()]
 
   inputs = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
-  char_ids_inputs = np.zeros(
+  inputs_char_ids = np.zeros(
       [BATCH_SIZE, NUM_TIMESTEPS, vocab.max_word_length], np.int32)
   for i, _ in enumerate(word_ids):
     inputs[0, 0] = word_ids[i]
-    char_ids_inputs[0, 0, :] = char_ids[i]
+    inputs_char_ids[0, 0, :] = char_ids[i]
 
     # Add 'lstm/lstm_0/control_dependency' if you want to dump previous layer
     # LSTM.
     lstm_emb = sess.run(t['lstm/lstm_1/control_dependency'],
-                        feed_dict={t['char_inputs_in']: char_ids_inputs,
+                        feed_dict={t['char_inputs_in']: inputs_char_ids,
                                    t['inputs_in']: inputs,
                                    t['targets_in']: targets,
                                    t['target_weights_in']: weights})
@@ -337,7 +335,7 @@ def _dump_sentence_embedding(sentence, vocab):
     fname = os.path.join(FLAGS.save_dir, 'lstm_emb_step_%d.npy' % i)
     with tf.gfile.Open(fname, mode='w') as f:
       np.save(f, lstm_emb)
-    sys.stderr.write('LSTM embedding step %d file saved\n' % i)
+    print('LSTM embedding step %d file saved\n' % i)
 
 
 def main(unused_argv):
