@@ -212,6 +212,57 @@ def _sample_model(prefix_words, vocab):
         break
 
 
+def _predict_missing(prefix_words, vocab):
+  """Predict next words using the given prefix words.
+
+  Args:
+    prefix_words: Prefix words.
+    vocab: Vocabulary. Contains max word chard id length and converts between
+        words and ids.
+  """
+  targets = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
+  weights = np.ones([BATCH_SIZE, NUM_TIMESTEPS], np.float32)
+
+  sess, t = _load_model(FLAGS.pbtxt, FLAGS.ckpt)
+
+  if prefix_words.find('<S>') != 0:
+    prefix_words = '<S> ' + prefix_words
+
+  prefix = [vocab.word_to_id(w) for w in prefix_words.split()]
+  prefix_char_ids = [vocab.word_to_char_ids(w) for w in prefix_words.split()]
+  for _ in range(FLAGS.num_samples):
+    inputs = np.zeros([BATCH_SIZE, NUM_TIMESTEPS], np.int32)
+    char_ids_inputs = np.zeros(
+        [BATCH_SIZE, NUM_TIMESTEPS, vocab.max_word_length], np.int32)
+    samples = prefix[:]
+    char_ids_samples = prefix_char_ids[:]
+    sent = ''
+    while True:
+      inputs[0, 0] = samples[0]
+      char_ids_inputs[0, 0, :] = char_ids_samples[0]
+      samples = samples[1:]
+      char_ids_samples = char_ids_samples[1:]
+
+      softmax = sess.run(t['softmax_out'],
+                         feed_dict={t['char_inputs_in']: char_ids_inputs,
+                                    t['inputs_in']: inputs,
+                                    t['targets_in']: targets,
+                                    t['target_weights_in']: weights})
+
+      sample = _sample_softmax(softmax[0])
+      sample_char_ids = vocab.word_to_char_ids(vocab.id_to_word(sample))
+
+      if not samples:
+        samples = [sample]
+        char_ids_samples = [sample_char_ids]
+      sent += vocab.id_to_word(samples[0]) + ' '
+      sys.stderr.write('%s\n' % sent)
+
+      if (vocab.id_to_word(samples[0]) == '</S>' or
+          len(sent) > FLAGS.max_sample_words):        # pylint: disable=bad-continuation
+        break
+
+
 def _dump_emb(vocab):
   """Dump the softmax weights and word embeddings to files.
 
@@ -297,6 +348,8 @@ def main(unused_argv):
     _eval_model(dataset)
   elif FLAGS.mode == 'sample':
     _sample_model(FLAGS.prefix, vocab)
+  elif FLAGS.mode == 'predict_missing':
+    _predict_missing(FLAGS.prefix, vocab)
   elif FLAGS.mode == 'dump_emb':
     _dump_emb(vocab)
   elif FLAGS.mode == 'dump_lstm_emb':
